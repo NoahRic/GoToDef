@@ -2,33 +2,26 @@
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
 using System.Windows.Media;
-using Microsoft.VisualStudio.ApplicationModel.Environments;
 using Microsoft.VisualStudio.Text;
 using Microsoft.VisualStudio.Text.Classification;
 using Microsoft.VisualStudio.Utilities;
 using Microsoft.VisualStudio.Text.Editor;
+using Microsoft.VisualStudio.Text.Tagging;
 
 namespace GoToDef
 {
     #region Classification type/format exports
 
-    internal static class UnderlineClassificationExports
-    {
-        [Export(typeof(ClassificationTypeDefinition))]
-        [Name("UnderlineClassification")]
-        internal static ClassificationTypeDefinition underlineClassificationType;
-    }
-
     [Export(typeof(EditorFormatDefinition))]
     [ClassificationType(ClassificationTypeNames = "UnderlineClassification")]
     [Name("UnderlineClassificationFormat")]
-    [DisplayName("Underline")]
     [UserVisible(true)]
     [Order(After = Priority.High)]
     internal sealed class UnderlineFormatDefinition : ClassificationFormatDefinition
     {
         public UnderlineFormatDefinition()
         {
+            this.DisplayName = "Underline";
             this.TextDecorations = System.Windows.TextDecorations.Underline;
             this.ForegroundColor = Colors.Blue;
         }
@@ -37,58 +30,44 @@ namespace GoToDef
     #endregion
 
     #region Provider definition
-    [Export(typeof(IClassifierProvider))]
+    [Export(typeof(IViewTaggerProvider))]
     [ContentType("text")]
-    internal class UnderlineClassifierProvider : IClassifierProvider
+    [TagType(typeof(ClassificationTag))]
+    internal class UnderlineClassifierProvider : IViewTaggerProvider
     {
         [Import]
-        internal IClassificationTypeRegistryService ClassificationRegistry;
+        internal IClassificationTypeRegistryService ClassificationRegistry = null;
 
-        public IClassifier GetClassifier(ITextBuffer buffer, IEnvironment context)
+        [Export(typeof(ClassificationTypeDefinition))]
+        [Name("UnderlineClassification")]
+        internal static ClassificationTypeDefinition underlineClassificationType = null;
+
+        static IClassificationType UnderlineClassification;
+        public static UnderlineClassifier GetClassifierForView(ITextView view)
         {
-            // We want to provide classifications for a specific view, since this is an interaction with the mouse over
-            // a specific view.
-            object textViewObject;
-            if (!context.GetFromBindings(TextViewUtil.TextViewVariable, out textViewObject))
+            if (UnderlineClassification == null)
                 return null;
 
-            ITextView textView = textViewObject as ITextView;
-            if (textView == null)
-                return null;
+            return view.Properties.GetOrCreateSingletonProperty(() => new UnderlineClassifier(view, UnderlineClassification));
+        }
+
+        public ITagger<T> CreateTagger<T>(ITextView textView, ITextBuffer buffer) where T : ITag
+        {
+            if (UnderlineClassification == null)
+                UnderlineClassification = ClassificationRegistry.GetClassificationType("UnderlineClassification");
 
             if (textView.TextBuffer != buffer)
                 return null;
 
-            // Try to get or create a classifier for the given view
-            IClassifier classifier = GetClassifierForView(textView);
-            if (classifier == null)
-            {
-                classifier = new UnderlineClassifier(textView,
-                    ClassificationRegistry.GetClassificationType("UnderlineClassification"));
-                textView.Properties.AddProperty(typeof(UnderlineClassifier), classifier);
-            }
-
-            return classifier;
-        }
-
-        internal static UnderlineClassifier GetClassifierForView(ITextView view)
-        {
-            UnderlineClassifier classifier;
-            if (!view.Properties.TryGetProperty(typeof(UnderlineClassifier), out classifier))
-                return null;
-            else
-                return classifier;
+            return GetClassifierForView(textView) as ITagger<T>;
         }
     }
     #endregion
 
-    internal class UnderlineClassifier : IClassifier
+    internal class UnderlineClassifier : ITagger<ClassificationTag>
     {
-        public event EventHandler<ClassificationChangedEventArgs> ClassificationChanged;
-
         IClassificationType _classificationType;
         ITextView _textView;
-        CtrlKeyState _state;
         SnapshotSpan? _underlineSpan;
 
         internal UnderlineClassifier(ITextView textView, IClassificationType classificationType)
@@ -102,9 +81,9 @@ namespace GoToDef
 
         void SendEvent(SnapshotSpan span)
         {
-            var temp = this.ClassificationChanged;
+            var temp = this.TagsChanged;
             if (temp != null)
-                temp(this, new ClassificationChangedEventArgs(span));
+                temp(this, new SnapshotSpanEventArgs(span));
         }
 
         #endregion
@@ -137,20 +116,19 @@ namespace GoToDef
 
         #endregion
 
-        #region IClassifier Implementation
-
-        public IList<ClassificationSpan> GetClassificationSpans(SnapshotSpan span)
+        public IEnumerable<ITagSpan<ClassificationTag>> GetTags(NormalizedSnapshotSpanCollection spans)
         {
-            List<ClassificationSpan> classifications = new List<ClassificationSpan>(1);
+            if (!_underlineSpan.HasValue || spans.Count == 0)
+                yield break;
 
-            if (_underlineSpan.HasValue &&
-                _underlineSpan.Value.TranslateTo(span.Snapshot, SpanTrackingMode.EdgeInclusive).IntersectsWith(span))
+            SnapshotSpan request = new SnapshotSpan(spans[0].Start, spans[spans.Count - 1].End);
+            SnapshotSpan underline = _underlineSpan.Value.TranslateTo(request.Snapshot, SpanTrackingMode.EdgeInclusive);
+            if (underline.IntersectsWith(request))
             {
-                classifications.Add(new ClassificationSpan(_underlineSpan.Value, _classificationType));
+                yield return new TagSpan<ClassificationTag>(underline, new ClassificationTag(_classificationType));
             }
-
-            return classifications;
         }
-        #endregion
+
+        public event EventHandler<SnapshotSpanEventArgs> TagsChanged;
     }
 }

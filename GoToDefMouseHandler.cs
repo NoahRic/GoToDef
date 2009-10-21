@@ -1,34 +1,30 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.ComponentModel.Composition;
-using System.Windows.Media;
-using Microsoft.VisualStudio.ApplicationModel.Environments;
-using Microsoft.VisualStudio.Text;
-using Microsoft.VisualStudio.Text.Classification;
-using Microsoft.VisualStudio.Utilities;
-using Microsoft.VisualStudio.Text.Editor;
-using System.Windows.Input;
+using System.Runtime.InteropServices;
 using System.Windows;
-using Microsoft.VisualStudio.Text.Operations;
+using System.Windows.Input;
+using Microsoft.VisualStudio;
 using Microsoft.VisualStudio.Editor;
 using Microsoft.VisualStudio.OLE.Interop;
-using System.Runtime.InteropServices;
-using Microsoft.VisualStudio;
-using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
+using Microsoft.VisualStudio.Text;
+using Microsoft.VisualStudio.Text.Classification;
+using Microsoft.VisualStudio.Text.Editor;
+using Microsoft.VisualStudio.Text.Operations;
+using Microsoft.VisualStudio.Utilities;
+using Microsoft.VisualStudio.Shell;
 
 namespace GoToDef
 {
     [Export(typeof(IKeyProcessorProvider))]
     [TextViewRole(PredefinedTextViewRoles.Document)]
     [ContentType("code")]
-    [Name("ControlKeyProcessor")]
+    [Name("GotoDef")]
     [Order(Before = "VisualStudioKeyboardProcessor")]
     internal sealed class GoToDefKeyProcessorProvider : IKeyProcessorProvider
     {
-        public KeyProcessor GetAssociatedProcessor(IWpfTextViewHost wpfTextViewHost)
+        public KeyProcessor GetAssociatedProcessor(IWpfTextView view)
         {
-            ITextView view = wpfTextViewHost.TextView;
             return view.Properties.GetOrCreateSingletonProperty(typeof(GoToDefKeyProcessor),
                                                                 () => new GoToDefKeyProcessor(CtrlKeyState.GetStateForView(view)));
         }
@@ -49,7 +45,7 @@ namespace GoToDef
 
         internal bool Enabled
         {
-            get 
+            get
             {
                 // Check and see if ctrl is down but we missed it somehow.
                 bool ctrlDown = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
@@ -58,7 +54,7 @@ namespace GoToDef
 
                 return _enabled;
             }
-            set 
+            set
             {
                 bool oldVal = _enabled;
                 _enabled = value;
@@ -70,7 +66,7 @@ namespace GoToDef
                 }
             }
         }
-        
+
         internal event EventHandler<EventArgs> CtrlKeyStateChanged;
     }
 
@@ -85,7 +81,7 @@ namespace GoToDef
         {
             _state = state;
         }
-        
+
         void UpdateState(KeyEventArgs args)
         {
             _state.Enabled = (args.KeyboardDevice.Modifiers & ModifierKeys.Control) != 0;
@@ -96,7 +92,7 @@ namespace GoToDef
             UpdateState(args);
         }
 
-        public override void  PreviewKeyUp(KeyEventArgs args)
+        public override void PreviewKeyUp(KeyEventArgs args)
         {
             UpdateState(args);
         }
@@ -105,70 +101,43 @@ namespace GoToDef
     [Export(typeof(IMouseProcessorProvider))]
     [TextViewRole(PredefinedTextViewRoles.Document)]
     [ContentType("code")]
-    [Order(Before = "WordSelectionMouseProcessorProvider")]
+    [Name("GotoDef")]
+    [Order(Before = "WordSelection")]
     internal sealed class GoToDefMouseHandlerProvider : IMouseProcessorProvider
     {
         [Import]
-        internal IClassifierAggregatorService AggregatorFactory;
+        IClassifierAggregatorService AggregatorFactory = null;
 
         [Import]
-        internal ITextStructureNavigatorSelectorService NavigatorService;
+        ITextStructureNavigatorSelectorService NavigatorService = null;
 
         [Import]
-        internal IVsEditorAdaptersFactoryService AdaptersFactory;
+        System.IServiceProvider GlobalServiceProvider = null;
 
-        public IMouseProcessor GetAssociatedProcessor(IWpfTextViewHost wpfTextViewHost)
+        public IMouseProcessor GetAssociatedProcessor(IWpfTextView view)
         {
-            var buffer = wpfTextViewHost.TextView.TextBuffer;
-            var environment = new StandardEnvironment();
+            var buffer = view.TextBuffer;
 
-            IOleCommandTarget shellCommandDispatcher = GetShellCommandDispatcher(wpfTextViewHost.TextView);
+            IOleCommandTarget shellCommandDispatcher = GetShellCommandDispatcher(view);
 
             if (shellCommandDispatcher == null)
                 return null;
 
-            return new GoToDefMouseHandler(wpfTextViewHost.TextView,
+            return new GoToDefMouseHandler(view,
                                            shellCommandDispatcher,
-                                           AggregatorFactory.GetClassifier(buffer, environment),
-                                           NavigatorService.GetTextStructureNavigator(buffer, environment),
-                                           CtrlKeyState.GetStateForView(wpfTextViewHost.TextView));
+                                           AggregatorFactory.GetClassifier(buffer),
+                                           NavigatorService.GetTextStructureNavigator(buffer),
+                                           CtrlKeyState.GetStateForView(view));
         }
 
         #region Private helpers
 
         /// <summary>
-        /// Get the SUIHostCommandDispatcher from the shell.  This method is rather ugly, and will (hopefully) be cleaned up
-        /// slightly whenever [Import]ing an IServiceProvider is available.
+        /// Get the SUIHostCommandDispatcher from the global service provider.
         /// </summary>
-        /// <param name="view"></param>
-        /// <returns></returns>
         IOleCommandTarget GetShellCommandDispatcher(ITextView view)
         {
-            IOleCommandTarget shellCommandDispatcher;
-
-            var vsBuffer = AdaptersFactory.GetBufferAdapter(view.TextBuffer);
-            if (vsBuffer == null)
-                return null;
-
-            Guid guidServiceProvider = VSConstants.IID_IUnknown;
-            IObjectWithSite objectWithSite = vsBuffer as IObjectWithSite;
-            IntPtr ptrServiceProvider = IntPtr.Zero;
-            objectWithSite.GetSite(ref guidServiceProvider, out ptrServiceProvider);
-
-            Microsoft.VisualStudio.OLE.Interop.IServiceProvider serviceProvider = (Microsoft.VisualStudio.OLE.Interop.IServiceProvider)Marshal.GetObjectForIUnknown(ptrServiceProvider);
-            Guid guidService = typeof(SUIHostCommandDispatcher).GUID;
-            Guid guidInterface = typeof(IOleCommandTarget).GUID;
-            IntPtr ptrObject = IntPtr.Zero;
-
-            int hr = serviceProvider.QueryService(ref guidService, ref guidInterface, out ptrObject);
-            if (ErrorHandler.Failed(hr) || ptrObject == IntPtr.Zero)
-                return null;
-
-            shellCommandDispatcher = (IOleCommandTarget)Marshal.GetObjectForIUnknown(ptrObject);
-
-            Marshal.Release(ptrObject);
-
-            return shellCommandDispatcher;
+            return GlobalServiceProvider.GetService(typeof(SUIHostCommandDispatcher)) as IOleCommandTarget;
         }
 
         #endregion
@@ -186,7 +155,7 @@ namespace GoToDef
         ITextStructureNavigator _navigator;
         IOleCommandTarget _commandTarget;
 
-        public GoToDefMouseHandler(IWpfTextView view, IOleCommandTarget commandTarget, IClassifier aggregator, 
+        public GoToDefMouseHandler(IWpfTextView view, IOleCommandTarget commandTarget, IClassifier aggregator,
                                    ITextStructureNavigator navigator, CtrlKeyState state)
         {
             _view = view;
@@ -196,17 +165,17 @@ namespace GoToDef
             _navigator = navigator;
 
             _state.CtrlKeyStateChanged += (sender, args) =>
-                {
-                    if (_state.Enabled)
-                        this.TryHighlightItemUnderMouse(RelativeToView(Mouse.PrimaryDevice.GetPosition(_view.VisualElement)));
-                    else
-                        this.SetHighlightSpan(null);
-                };
+            {
+                if (_state.Enabled)
+                    this.TryHighlightItemUnderMouse(RelativeToView(Mouse.PrimaryDevice.GetPosition(_view.VisualElement)));
+                else
+                    this.SetHighlightSpan(null);
+            };
         }
 
         #region Mouse processor overrides
 
-        public override void PostprocessMouseLeftButtonUp(MouseButtonEventArgs e)
+        public override void PostprocessMouseLeftButtonDown(MouseButtonEventArgs e)
         {
             if (_state.Enabled)
             {
@@ -307,7 +276,8 @@ namespace GoToDef
 
         bool DispatchGoToDef()
         {
-            int hr = _commandTarget.Exec(ref VsMenus.guidStandardCommandSet97,
+            Guid cmdGroup = VSConstants.GUID_VSStandardCommandSet97;
+            int hr = _commandTarget.Exec(ref cmdGroup,
                                          (uint)VSConstants.VSStd97CmdID.GotoDefn,
                                          (uint)OLECMDEXECOPT.OLECMDEXECOPT_DODEFAULT,
                                          System.IntPtr.Zero,
