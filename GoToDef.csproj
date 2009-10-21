@@ -82,7 +82,9 @@
     <Compile Include="GoToDefMouseHandler.cs" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="source.extension.vsixmanifest" />
+    <None Include="source.extension.vsixmanifest">
+      <SubType>Designer</SubType>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <Content Include="GoToDefinition-icon.png">
