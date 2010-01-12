@@ -98,6 +98,9 @@ namespace GoToDef
             if (!oldSpan.HasValue && !_underlineSpan.HasValue)
                 return;
 
+            else if (oldSpan.HasValue && _underlineSpan.HasValue && oldSpan == _underlineSpan)
+                return;
+
             if (!_underlineSpan.HasValue)
             {
                 this.SendEvent(oldSpan.Value);
