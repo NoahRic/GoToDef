@@ -112,7 +112,7 @@ namespace GoToDef
         ITextStructureNavigatorSelectorService NavigatorService = null;
 
         [Import]
-        System.IServiceProvider GlobalServiceProvider = null;
+        SVsServiceProvider GlobalServiceProvider = null;
 
         public IMouseProcessor GetAssociatedProcessor(IWpfTextView view)
         {
