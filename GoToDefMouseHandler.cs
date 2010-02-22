@@ -171,6 +171,11 @@ namespace GoToDef
                 else
                     this.SetHighlightSpan(null);
             };
+
+            // Some other points to clear the highlight span:
+
+            _view.LostAggregateFocus += (sender, args) => this.SetHighlightSpan(null);
+            _view.VisualElement.MouseLeave += (sender, args) => this.SetHighlightSpan(null);
         }
 
         #region Mouse processor overrides
