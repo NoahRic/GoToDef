@@ -3,8 +3,8 @@
   <Identifier Id="GoToDef">
     <Name>Go To Definition</Name>
     <Author>Noah Richards</Author>
-    <Version>2.01</Version>
-    <Description>Make ctrl+click perform a "Go To Definition" on the identifier under the cursor.
+    <Version>2.1</Version>
+    <Description xml:space="preserve">Make ctrl+click perform a "Go To Definition" on the identifier under the cursor.
                  Also, when the ctrl key is held down, highlight identifiers that look like they have 
                  definitions to navigate to.</Description>
     <Locale>1033</Locale>
