@@ -180,25 +180,49 @@ namespace GoToDef
 
         #region Mouse processor overrides
 
+        // Remember the location of the mouse on left button down, so we only handle left button up
+        // if the mouse has stayed in a single location.
+        Point? _mouseDownAnchorPoint;
+
         public override void PostprocessMouseLeftButtonDown(MouseButtonEventArgs e)
         {
-            if (_state.Enabled)
-            {
-                _state.Enabled = false;
-                this.SetHighlightSpan(null);
-                this.DispatchGoToDef();
-            }
+            _mouseDownAnchorPoint = RelativeToView(e.GetPosition(_view.VisualElement));
         }
 
         public override void PreprocessMouseMove(MouseEventArgs e)
         {
-            if (_state.Enabled)
+            if (!_mouseDownAnchorPoint.HasValue && _state.Enabled)
             {
                 TryHighlightItemUnderMouse(RelativeToView(e.GetPosition(_view.VisualElement)));
             }
+        }
 
-            // Don't mark the event as handled, so other mouse processors have a chance to do their work
-            // (such as clicking+dragging to select text)
+        public override void PreprocessMouseLeave(MouseEventArgs e)
+        {
+            _mouseDownAnchorPoint = null;
+        }
+
+        public override void PreprocessMouseUp(MouseButtonEventArgs e)
+        {
+            if (_mouseDownAnchorPoint.HasValue && _state.Enabled)
+            {
+                var currentMousePosition = RelativeToView(e.GetPosition(_view.VisualElement));
+
+                // If the mouse up was less than a drag away from the mouse down, consider this a click
+                if (Math.Abs(_mouseDownAnchorPoint.Value.X - currentMousePosition.X) < SystemParameters.MinimumHorizontalDragDistance &&
+                    Math.Abs(_mouseDownAnchorPoint.Value.Y - currentMousePosition.Y) < SystemParameters.MinimumVerticalDragDistance)
+                {
+                    _state.Enabled = false;
+
+                    this.SetHighlightSpan(null);
+                    _view.Selection.Clear();
+                    this.DispatchGoToDef();
+
+                    e.Handled = true;
+                }
+
+                _mouseDownAnchorPoint = null;
+            }
         }
 
         #endregion
@@ -224,6 +248,14 @@ namespace GoToDef
 
                 if (!bufferPosition.HasValue)
                     return false;
+
+                // Quick check - if the mouse is still inside the current underline span, we're already set
+                var currentSpan = CurrentUnderlineSpan;
+                if (currentSpan.HasValue && currentSpan.Value.Contains(bufferPosition.Value))
+                {
+                    updated = true;
+                    return true;
+                }
 
                 var extent = _navigator.GetExtentOfWord(bufferPosition.Value);
                 if (!extent.IsSignificant)
@@ -261,6 +293,17 @@ namespace GoToDef
             }
         }
 
+        SnapshotSpan? CurrentUnderlineSpan
+        {
+            get
+            {
+                var classifier = UnderlineClassifierProvider.GetClassifierForView(_view);
+                if (classifier != null && classifier.CurrentUnderlineSpan.HasValue)
+                    return classifier.CurrentUnderlineSpan.Value.TranslateTo(_view.TextSnapshot, SpanTrackingMode.EdgeExclusive);
+                else
+                    return null;
+            }
+        }
 
         bool SetHighlightSpan(SnapshotSpan? span)
         {

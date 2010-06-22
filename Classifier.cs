@@ -90,6 +90,8 @@ namespace GoToDef
 
         #region UnderlineClassification public members
 
+        public SnapshotSpan? CurrentUnderlineSpan { get { return _underlineSpan; } }
+
         public void SetUnderlineSpan(SnapshotSpan? span)
         {
             var oldSpan = _underlineSpan;
