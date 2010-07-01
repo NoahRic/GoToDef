@@ -191,10 +191,27 @@ namespace GoToDef
 
         public override void PreprocessMouseMove(MouseEventArgs e)
         {
-            if (!_mouseDownAnchorPoint.HasValue && _state.Enabled)
+            if (!_mouseDownAnchorPoint.HasValue && _state.Enabled && e.LeftButton == MouseButtonState.Released)
             {
                 TryHighlightItemUnderMouse(RelativeToView(e.GetPosition(_view.VisualElement)));
             }
+            else if (_mouseDownAnchorPoint.HasValue)
+            {
+                // Check and see if this is a drag; if so, clear out the highlight.
+                var currentMousePosition = RelativeToView(e.GetPosition(_view.VisualElement));
+                if (InDragOperation(_mouseDownAnchorPoint.Value, currentMousePosition))
+                {
+                    _mouseDownAnchorPoint = null;
+                    this.SetHighlightSpan(null);
+                }
+            }
+        }
+
+        private bool InDragOperation(Point anchorPoint, Point currentPoint)
+        {
+            // If the mouse up is more than a drag away from the mouse down, this is a drag
+            return Math.Abs(anchorPoint.X - currentPoint.X) >= SystemParameters.MinimumHorizontalDragDistance &&
+                   Math.Abs(anchorPoint.Y - currentPoint.Y) >= SystemParameters.MinimumVerticalDragDistance;
         }
 
         public override void PreprocessMouseLeave(MouseEventArgs e)
@@ -208,9 +225,7 @@ namespace GoToDef
             {
                 var currentMousePosition = RelativeToView(e.GetPosition(_view.VisualElement));
 
-                // If the mouse up was less than a drag away from the mouse down, consider this a click
-                if (Math.Abs(_mouseDownAnchorPoint.Value.X - currentMousePosition.X) < SystemParameters.MinimumHorizontalDragDistance &&
-                    Math.Abs(_mouseDownAnchorPoint.Value.Y - currentMousePosition.Y) < SystemParameters.MinimumVerticalDragDistance)
+                if (!InDragOperation(_mouseDownAnchorPoint.Value, currentMousePosition))
                 {
                     _state.Enabled = false;
 
@@ -220,9 +235,9 @@ namespace GoToDef
 
                     e.Handled = true;
                 }
-
-                _mouseDownAnchorPoint = null;
             }
+
+            _mouseDownAnchorPoint = null;
         }
 
         #endregion
