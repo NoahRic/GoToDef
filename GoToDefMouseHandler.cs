@@ -210,7 +210,7 @@ namespace GoToDef
         private bool InDragOperation(Point anchorPoint, Point currentPoint)
         {
             // If the mouse up is more than a drag away from the mouse down, this is a drag
-            return Math.Abs(anchorPoint.X - currentPoint.X) >= SystemParameters.MinimumHorizontalDragDistance &&
+            return Math.Abs(anchorPoint.X - currentPoint.X) >= SystemParameters.MinimumHorizontalDragDistance ||
                    Math.Abs(anchorPoint.Y - currentPoint.Y) >= SystemParameters.MinimumVerticalDragDistance;
         }
 
