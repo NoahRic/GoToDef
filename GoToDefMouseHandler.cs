@@ -48,7 +48,8 @@ namespace GoToDef
             get
             {
                 // Check and see if ctrl is down but we missed it somehow.
-                bool ctrlDown = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+                bool ctrlDown = (Keyboard.Modifiers & ModifierKeys.Control) != 0 &&
+                                (Keyboard.Modifiers & ModifierKeys.Shift) == 0;
                 if (ctrlDown != _enabled)
                     Enabled = ctrlDown;
 
@@ -84,7 +85,8 @@ namespace GoToDef
 
         void UpdateState(KeyEventArgs args)
         {
-            _state.Enabled = (args.KeyboardDevice.Modifiers & ModifierKeys.Control) != 0;
+            _state.Enabled = (args.KeyboardDevice.Modifiers & ModifierKeys.Control) != 0 &&
+                             (args.KeyboardDevice.Modifiers & ModifierKeys.Shift) == 0;
         }
 
         public override void PreviewKeyDown(KeyEventArgs args)
